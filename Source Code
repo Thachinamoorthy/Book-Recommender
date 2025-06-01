@@ -1,0 +1,94 @@
+#recommend.py
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.neighbors import NearestNeighbors
+def recommend_books(title, books_df, ratings_df):
+    # Combine relevant features
+    books_df['features'] = books_df['Book-Title'].astype(str) + " " + books_df['Book-Author'].astype(str)
+
+    # Vectorize using CountVectorizer (lightweight)
+    vectorizer = CountVectorizer(stop_words='english')
+    feature_matrix = vectorizer.fit_transform(books_df['features'])
+
+    print("Vectorization complete. Shape:", feature_matrix.shape)
+
+    # Fit Nearest Neighbors
+    model = NearestNeighbors(n_neighbors=6, metric='cosine')
+    model.fit(feature_matrix)
+
+    # Check if the title exists in dataset (case-insensitive match)
+    matched_titles = books_df[books_df['Book-Title'].str.lower() == title.lower()]
+    
+    if matched_titles.empty:
+        print(f"Title '{title}' not found in dataset.")
+        return []
+
+    # Get index of the selected book
+    book_index = matched_titles.index[0]
+    book_vector = feature_matrix[book_index]
+
+    # Find similar books
+    distances, indices = model.kneighbors(book_vector)
+
+    print("Indices of similar books:", indices)
+    print("Distances from selected book:", distances)
+
+    recommendations = []
+
+    for idx in indices[0]:
+        if idx != book_index:
+            rec_title = books_df.iloc[idx]['Book-Title']
+            rec_author = books_df.iloc[idx]['Book-Author']
+            recommendations.append(f"{rec_title} by {rec_author}")
+
+    if not recommendations:
+        print("No recommendations found.")
+    else:
+        print("Recommendations:", recommendations)
+
+    return recommendations
+# explain.py
+
+def explain_recommendation(title):
+    return (
+        f"The recommendations for '{title}' are generated using content-based filtering. "
+        "We analyze the book's title and author using keyword similarity techniques, "
+        "and find books with closely matching content or writing style. "
+        "This approach doesn't rely on user ratings, so it works well even for lesser-known books."
+
+# app.py
+import streamlit as st
+import pandas as pd
+from recommend import recommend_books
+from explain import explain_recommendation
+
+# Load the datasets
+books = pd.read_csv("books.csv")
+ratings = pd.read_csv("ratings.csv")
+
+# Streamlit UI
+st.title("📚 Personalized Book Recommendation System")
+st.markdown("Search a book and get personalized recommendations based on content and author similarity.")
+
+# Book search input
+selected_title = st.text_input("Enter a book title", "")
+
+# When user clicks the recommend button
+if st.button("Recommend"):
+    if selected_title.strip() == "":
+        st.warning("Please enter a valid book title.")
+    else:
+        with st.spinner("Finding recommendations..."):
+            recommendations = recommend_books(selected_title, books, ratings)
+
+        if recommendations:
+            st.success("Here are some similar books:")
+            for idx, rec in enumerate(recommendations, 1):
+                st.markdown(f"**{idx}. {rec}**")
+
+            # Explanation section
+            with st.expander("🔍 Why these recommendations?"):
+                explanation = explain_recommendation(selected_title)
+                st.write(explanation)
+        else:
+            st.error("Sorry, no recommendations found. Try another title.")
